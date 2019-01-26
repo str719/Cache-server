@@ -1,0 +1,10 @@
+OK
+OK
+Error - incorrect parameter name and value delimeter.
+Error - incorrect parameter names or ordering.
+Error - incorrect parameter names or ordering.
+OK
+Error - extra symbols in request.
+Error - incorrect parameter names or ordering.
+Error - incorrect request type (must be GET or PUT).
+Error - incorrect request type (must be GET or PUT).
