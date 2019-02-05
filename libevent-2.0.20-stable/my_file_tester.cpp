@@ -7,7 +7,72 @@
 #include <iostream>
 using namespace std;
 
-void set_error(int *error_code, char **error_description, int error_code_value, const char *error_description_value) {
+// Hash size
+const int MODULO = 239017;
+
+// Base for polynomial hashing
+const int P = 997;
+
+// Hashmap
+char hash_used[MODULO];
+char *cached_value[MODULO];
+int time_to_live[MODULO];
+
+static void alloc_and_copy(char **dest, const char *source) {
+	if (*dest != NULL) {
+		free(*dest);
+	}
+	*dest = (char*)malloc((strlen(source) + 1) * sizeof(char));
+	strcpy(*dest, source);
+}
+
+static void init_hashmap() {
+	for(int i = 0; i < MODULO; i++){
+		hash_used[i] = 0;
+		cached_value[i] = NULL;
+		time_to_live[i] = 0;
+	}
+}
+
+static void clear_hashmap() {
+	for(int i = 0; i < MODULO; i++){
+		if (hash_used[i]) {
+			free(cached_value[i]);		
+		}
+	}
+}
+
+static int get_hash(char * str) {
+	int hash = 0;
+	for(int i = 0; str[i]; i++) {
+		hash = (hash * P + str[i]) % MODULO;	
+	}
+	return hash;
+}
+
+static void get_value(char * key, char **value, int *result) {
+	// TODO - add time_to_live
+	int hash = get_hash(key);
+	if (!hash_used[hash]) {
+		*result = 0;
+		return;
+	}
+	*result = 1;
+	alloc_and_copy(value, cached_value[hash]);
+}
+
+static void set_value(char * key, char *value, int ttl) {
+	// TODO - add time_to_live
+	// TODO - add mutex
+	int hash = get_hash(key);
+	if (hash_used[hash]) {
+		free(cached_value[hash]);
+	}
+	hash_used[hash] = 1;
+	alloc_and_copy(&cached_value[hash], value);
+}
+
+static void set_error(int *error_code, char **error_description, int error_code_value, const char *error_description_value) {
 	*error_code = error_code_value;
 	strcpy(*error_description, error_description_value);
 }
@@ -27,7 +92,7 @@ static void get_parameter(char * params, int *offset,
 		for(int i = 0; expected_param_name[i]; i++) {
 			if (params[(*offset)] == 0 || params[(*offset)] != expected_param_name[i]) {
 				// Invalid parameter name - error code 1
-				set_error(error_code, error_description, 1, "Error - incorrect parameter names or ordering.\n");
+				set_error(error_code, error_description, 1, "Incorrect parameter names or ordering.");
 				return;
 			}
 			(*offset)++;	
@@ -35,7 +100,7 @@ static void get_parameter(char * params, int *offset,
 		// Delimeter of param name and value should be '='
 		if (params[(*offset)] != '=') {
 			// Invalid delimeter - error code 2
-			set_error(error_code, error_description, 2, "Error - incorrect parameter name and value delimeter.\n");
+			set_error(error_code, error_description, 2, "Incorrect parameter name and value delimeter.");
 			return;
 		}
 		(*offset)++;
@@ -62,41 +127,56 @@ static void get_parameter(char * params, int *offset,
 }
 
 static void parse_request(char * request, char ** param_type, char ** param_key, char ** param_value, char ** param_ttl, 
-	int *error_code, char **error_description) {
+	int *param_ttl_value, int *error_code, char **error_description) {
 	int offset = 0;
-	// Type of request (GET | PUT)
+	
 	get_parameter(request, &offset, "", param_type, error_code, error_description);
-	if (!(strcmp(*param_type, "GET") == 0 || strcmp(*param_type, "PUT") == 0)){
-		set_error(error_code, error_description, 3, "Error - incorrect request type (must be GET or PUT).\n");
+	// Type of request (GET | PUT | EXIT)
+	if (!(strcmp(*param_type, "GET") == 0 || strcmp(*param_type, "PUT") == 0 || strcmp(*param_type, "EXIT") == 0)){
+		set_error(error_code, error_description, 3, "Incorrect request type (must be GET, PUT or EXIT).");
 		return;
 	}
-	// Key
-	get_parameter(request, &offset, "KEY", param_key, error_code, error_description);
-	if (strcmp(*param_type, "PUT") == 0) {
-		// Value
-		get_parameter(request, &offset, "VALUE", param_value, error_code, error_description);
-		// time to live
-		get_parameter(request, &offset, "TTL", param_ttl, error_code, error_description);
-		
+	if (strcmp(*param_type, "GET") == 0 || strcmp(*param_type, "PUT") == 0) {
+		// Key
+		get_parameter(request, &offset, "KEY", param_key, error_code, error_description);
+		if (strcmp(*param_type, "PUT") == 0) {
+			// Value
+			get_parameter(request, &offset, "VALUE", param_value, error_code, error_description);
+			// time to live
+			get_parameter(request, &offset, "TTL", param_ttl, error_code, error_description);
+		}
 	}
 	if ((*error_code) != 0) {
 		return;
 	}
 	if (request[offset] != 0) {
-		set_error(error_code, error_description, 4, "Error - extra symbols in request.\n");
+		set_error(error_code, error_description, 4, "Extra symbols in request.");
 		return;
+	}
+	*param_ttl_value = 0;
+	if (strcmp(*param_type, "PUT") == 0) {
+		for(int i = 0; (*param_ttl)[i]; i++) {
+			if ((*param_ttl)[i] < '0' || (*param_ttl)[i] > '9') {
+				set_error(error_code, error_description, 5, "Invalid ttl format.");
+				return;
+			}
+			*param_ttl_value = *param_ttl_value * 10 + ((*param_ttl)[i] - '0');
+		}
 	}
 	return;
 }
 
 static void finalize_request(char * param_type, char * param_key, char * param_value, char * param_ttl, 
-	char * error_description, char ** response) {
-	if (error_description[0] != 0) {
-		(*response) = (char *)malloc(strlen(error_description) * sizeof(char));
-		strcpy(*response, error_description);	
+	int error_code, char * error_description, char ** response_header, char ** response_description, int exit_flag) {
+	if (error_code != 0) {
+		alloc_and_copy(response_header, "ERROR");
+		alloc_and_copy(response_description, error_description);	
+	} else if (exit_flag) {
+		alloc_and_copy(response_header, "EXIT");
+		alloc_and_copy(response_description, "OK");
 	} else {
-		(*response) = (char *)malloc(4 * sizeof(char));
-		strcpy(*response, "OK\n");
+		//alloc_and_copy(response_header, param_type);
+		//alloc_and_copy(response_description, "OK");
 	}
 
 	free(param_type);
@@ -106,42 +186,78 @@ static void finalize_request(char * param_type, char * param_key, char * param_v
 	free(error_description);
 }
 
-static void process_request(char * request, char ** response) {
+static void process_request(char * request, char ** response_header, char ** response_description, int *exit_flag) {
 	// Set error fields
 	int error_code = 0;
 	char * error_description = (char *)malloc(4096 * sizeof(char));
-	error_description[0] = 0;
-
+	
 	// Parse request
 	char * param_type = NULL, * param_key = NULL, * param_value = NULL, * param_ttl = NULL;
-	parse_request(request, &param_type, &param_key, &param_value, &param_ttl, &error_code, &error_description);
+	int ttl = 0;
+	parse_request(request, &param_type, &param_key, &param_value, &param_ttl, &ttl, &error_code, &error_description);
 	if (error_code != 0) {
-		finalize_request(param_type, param_key, param_value, param_ttl, error_description, response);
+		finalize_request(param_type, param_key, param_value, param_ttl, 
+			error_code, error_description, response_header, response_description, *exit_flag);
 		return;
 	}
-	// TODO
-	finalize_request(param_type, param_key, param_value, param_ttl, error_description, response);
+	// Special exit request (just for finishng work)
+	*exit_flag = 0;
+	if (strcmp(param_type, "EXIT") == 0) {
+		*exit_flag = 1;
+		finalize_request(param_type, param_key, param_value, param_ttl, 
+			error_code, error_description, response_header, response_description, *exit_flag);
+		return;
+	}
+	
+	if (strcmp(param_type, "GET") == 0) {
+		int result = 0;
+		get_value(param_key, &param_value, &result);
+		if (result == 0) {
+			alloc_and_copy(response_header, "GET FAILURE");
+			alloc_and_copy(response_description, "Value does not exist.");
+		} else {
+			alloc_and_copy(response_header, "GET SUCCESS");
+			alloc_and_copy(response_description, param_value);
+		}
+	} else if (strcmp(param_type, "PUT") == 0) {
+		set_value(param_key, param_value, ttl);
+		alloc_and_copy(response_header, "PUT SUCCESS");
+		alloc_and_copy(response_description, "Value successfully saved.");
+	}
+
+	finalize_request(param_type, param_key, param_value, param_ttl, 
+		error_code, error_description, response_header, response_description, *exit_flag);
 	return;
 }
 
 int main() {
 	freopen("my_input.txt", "r", stdin);
 	freopen("my_output.txt", "w", stdout);
+
+	init_hashmap();
+
 	while(1) {
 		string tmp;
 		getline(cin, tmp);
 		if (tmp == "") {
 			break;		
 		}
-		char * request = (char *)malloc(tmp.length() + 1);
+		char * request = (char *)malloc((tmp.length() + 1) * sizeof(char));
 		for(int i = 0; i < (int)tmp.length(); i++) {
 			request[i] = tmp[i];
 		}
 		request[tmp.length()] = 0;
-		char * response = NULL;
-		process_request(request, &response);
-		printf("%s", response);
+		char * response_header = NULL;
+		char * response_description = NULL;
+		int exit_flag = 0;
+		process_request(request, &response_header, &response_description, &exit_flag);
+		printf("%s - %s\n", response_header, response_description);
 		free(request);
-		free(response);
+		free(response_header);
+		free(response_description);
+		if (exit_flag) {
+			clear_hashmap();
+			exit(0);
+		}
 	}
 }

@@ -1,10 +1,12 @@
-OK
-OK
-Error - incorrect parameter name and value delimeter.
-Error - incorrect parameter names or ordering.
-Error - incorrect parameter names or ordering.
-OK
-Error - extra symbols in request.
-Error - incorrect parameter names or ordering.
-Error - incorrect request type (must be GET or PUT).
-Error - incorrect request type (must be GET or PUT).
+GET FAILURE - Value does not exist.
+PUT SUCCESS - Value successfully saved.
+GET SUCCESS - 54345678976550
+ERROR - Incorrect parameter name and value delimeter.
+ERROR - Incorrect parameter names or ordering.
+ERROR - Incorrect parameter names or ordering.
+PUT SUCCESS - Value successfully saved.
+ERROR - Extra symbols in request.
+ERROR - Incorrect parameter names or ordering.
+ERROR - Incorrect request type (must be GET, PUT or EXIT).
+ERROR - Incorrect request type (must be GET, PUT or EXIT).
+EXIT - OK

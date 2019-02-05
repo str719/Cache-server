@@ -67,20 +67,23 @@ static void get_parameter(char * params, int *offset,
 static void parse_request(char * request, char ** param_type, char ** param_key, char ** param_value, char ** param_ttl, 
 	int *error_code, char **error_description) {
 	int offset = 0;
-	// Type of request (GET | PUT)
+	
 	get_parameter(request, &offset, "", param_type, error_code, error_description);
-	if (!(strcmp(*param_type, "GET") == 0 || strcmp(*param_type, "PUT") == 0)){
-		set_error(error_code, error_description, 3, "Error - incorrect request type (must be GET or PUT).\n");
+	// Type of request (GET | PUT | EXIT)
+	if (!(strcmp(*param_type, "GET") == 0 || strcmp(*param_type, "PUT") == 0 || strcmp(*param_type, "EXIT") == 0)){
+		set_error(error_code, error_description, 3, "Error - incorrect request type (must be GET, PUT or EXIT).\n");
 		return;
 	}
-	// Key
-	get_parameter(request, &offset, "KEY", param_key, error_code, error_description);
-	if (strcmp(*param_type, "PUT") == 0) {
-		// Value
-		get_parameter(request, &offset, "VALUE", param_value, error_code, error_description);
-		// time to live
-		get_parameter(request, &offset, "TTL", param_ttl, error_code, error_description);
+	if (strcmp(*param_type, "GET") == 0 || strcmp(*param_type, "PUT") == 0) {
+		// Key
+		get_parameter(request, &offset, "KEY", param_key, error_code, error_description);
+		if (strcmp(*param_type, "PUT") == 0) {
+			// Value
+			get_parameter(request, &offset, "VALUE", param_value, error_code, error_description);
+			// time to live
+			get_parameter(request, &offset, "TTL", param_ttl, error_code, error_description);
 		
+		}
 	}
 	if ((*error_code) != 0) {
 		return;
@@ -93,10 +96,13 @@ static void parse_request(char * request, char ** param_type, char ** param_key,
 }
 
 static void finalize_request(char * param_type, char * param_key, char * param_value, char * param_ttl, 
-	char * error_description, char ** response) {
+	char * error_description, char ** response, int exit_flag) {
 	if (error_description[0] != 0) {
 		(*response) = (char *)malloc(strlen(error_description) * sizeof(char));
 		strcpy(*response, error_description);	
+	} else if (exit_flag) {
+		(*response) = (char *)malloc(11 * sizeof(char));
+		strcpy(*response, "OK - exit\n");
 	} else {
 		(*response) = (char *)malloc(4 * sizeof(char));
 		strcpy(*response, "OK\n");
@@ -109,7 +115,7 @@ static void finalize_request(char * param_type, char * param_key, char * param_v
 	free(error_description);
 }
 
-static void process_request(char * request, char ** response) {
+static void process_request(char * request, char ** response, int *exit_flag) {
 	// Set error fields
 	int error_code = 0;
 	char * error_description = (char *)malloc(4096 * sizeof(char));
@@ -119,15 +125,20 @@ static void process_request(char * request, char ** response) {
 	char * param_type = NULL, * param_key = NULL, * param_value = NULL, * param_ttl = NULL;
 	parse_request(request, &param_type, &param_key, &param_value, &param_ttl, &error_code, &error_description);
 	if (error_code != 0) {
-		finalize_request(param_type, param_key, param_value, param_ttl, error_description, response);
+		finalize_request(param_type, param_key, param_value, param_ttl, error_description, response, *exit_flag);
 		return;
 	}
-	// TODO - process request after parsing parameters
-
-	finalize_request(param_type, param_key, param_value, param_ttl, error_description, response);
+	// Special exit request (just for finishng work)
+	*exit_flag = 0;
+	if (strcmp(param_type, "EXIT") == 0) {
+		*exit_flag = 1;
+		finalize_request(param_type, param_key, param_value, param_ttl, error_description, response, *exit_flag);
+		return;
+	}
+	// TODO
+	finalize_request(param_type, param_key, param_value, param_ttl, error_description, response, *exit_flag);
 	return;
 }
-
 static void echo_read_cb(struct bufferevent *bev, void *ctx) {
 	/* This callback is invoked when there is data to read on bev. */
 	struct evbuffer *input = bufferevent_get_input(bev);
@@ -139,16 +150,20 @@ static void echo_read_cb(struct bufferevent *bev, void *ctx) {
 	data[len] = 0;
 	evbuffer_copyout(input, data, len);
 
-	char *response = NULL;
-
 	printf("we got some data: %s\n", data);
-	process_request(data, &response);
+
+	char *response = NULL;
+	int exit_flag = 0;
+	
+	process_request(data, &response, &exit_flag);
 
 	/* Copy all the data from the input buffer to the output buffer. */
 	//evbuffer_add_buffer(output, input);
 	evbuffer_add(output, response, strlen(response));
 	free(data);
 	free(response);
+
+	
 }
 
 static void echo_event_cb(struct bufferevent *bev, short events, void *ctx) {
