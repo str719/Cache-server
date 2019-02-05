@@ -18,6 +18,9 @@ char hash_used[MODULO];
 char *cached_value[MODULO];
 int time_to_live[MODULO];
 
+// Global exit flag
+int exit_flag;
+
 static void alloc_and_copy(char **dest, const char *source) {
 	if (*dest != NULL) {
 		free(*dest);
@@ -185,7 +188,7 @@ static void parse_request(char * request, char ** param_type, char ** param_key,
 }
 
 static void finalize_request(char * param_type, char * param_key, char * param_value, char * param_ttl, 
-	int error_code, char * error_description, char ** response_header, char ** response_description, char ** response, int exit_flag) {
+	int error_code, char * error_description, char ** response_header, char ** response_description, char ** response) {
 	if (error_code != 0) {
 		alloc_and_copy(response_header, "ERROR");
 		alloc_and_copy(response_description, error_description);	
@@ -209,7 +212,7 @@ static void finalize_request(char * param_type, char * param_key, char * param_v
 	free(*response_description);
 }
 
-static void process_request(char * request, char ** response, int *exit_flag) {
+static void process_request(char * request, char ** response) {
 	// Set error fields
 	int error_code = 0;
 	char * error_description = (char *)malloc(4096 * sizeof(char));
@@ -221,15 +224,14 @@ static void process_request(char * request, char ** response, int *exit_flag) {
 	parse_request(request, &param_type, &param_key, &param_value, &param_ttl, &ttl, &error_code, &error_description);
 	if (error_code != 0) {
 		finalize_request(param_type, param_key, param_value, param_ttl, 
-			error_code, error_description, &response_header, &response_description, response, *exit_flag);
+			error_code, error_description, &response_header, &response_description, response);
 		return;
 	}
 	// Special exit request (just for finishng work)
-	*exit_flag = 0;
 	if (strcmp(param_type, "EXIT") == 0) {
-		*exit_flag = 1;
+		exit_flag = 1;
 		finalize_request(param_type, param_key, param_value, param_ttl, 
-			error_code, error_description, &response_header, &response_description, response, *exit_flag);
+			error_code, error_description, &response_header, &response_description, response);
 		return;
 	}
 	
@@ -250,7 +252,7 @@ static void process_request(char * request, char ** response, int *exit_flag) {
 	}
 
 	finalize_request(param_type, param_key, param_value, param_ttl, 
-		error_code, error_description, &response_header, &response_description, response, *exit_flag);
+		error_code, error_description, &response_header, &response_description, response);
 	return;
 }
 
@@ -258,7 +260,11 @@ int main() {
 	freopen("my_input.txt", "r", stdin);
 	freopen("my_output.txt", "w", stdout);
 
+	// Init hashmap
 	init_hashmap();
+
+	// Refresh global exit flag	
+	exit_flag = 0;
 
 	while(1) {
 		string tmp;
@@ -272,8 +278,8 @@ int main() {
 		}
 		request[tmp.length()] = 0;
 		char * response = NULL;
-		int exit_flag = 0;
-		process_request(request, &response, &exit_flag);
+		
+		process_request(request, &response);
 		printf("%s\n", response);
 		free(request);
 		free(response);
