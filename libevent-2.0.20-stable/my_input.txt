@@ -8,6 +8,7 @@ PUT KEY=456 VALUE=6 TTL=4
 GET KEY=456 VALUE=6 TTL=4
 PUT KEY=456
 XXX KEY=456
+GET KEY=123456789
 INVALID
 EXIT
 NONREACHABLE COMMAND
@@ -25,14 +26,3 @@ echo -n 'XXX KEY=456' | nc -U /tmp/mysocket
 echo -n 'INVALID' | nc -U /tmp/mysocket
 echo -n 'EXIT' | nc -U /tmp/mysocket
 
-OK
-OK
-Error - incorrect parameter name and value delimeter.
-Error - incorrect parameter names or ordering.
-Error - incorrect parameter names or ordering.
-OK
-Error - extra symbols in request.
-Error - incorrect parameter names or ordering.
-Error - incorrect request type (must be GET, PUT or EXIT).
-Error - incorrect request type (must be GET, PUT or EXIT).
-OK - exit

@@ -8,5 +8,6 @@ PUT SUCCESS|Value successfully saved.
 ERROR|Extra symbols in request.
 ERROR|Incorrect parameter names or ordering.
 ERROR|Incorrect request type (must be GET, PUT or EXIT).
+GET FAILURE|Value does not exist.
 ERROR|Incorrect request type (must be GET, PUT or EXIT).
 EXIT|OK

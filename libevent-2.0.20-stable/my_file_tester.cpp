@@ -1,10 +1,14 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <time.h>
 #include <string>
 #include <vector>
 #include <unordered_map>
 #include <iostream>
+#include <mutex>
+#include <thread>
+#include <chrono> 
 using namespace std;
 
 // Hash size
@@ -18,22 +22,39 @@ char hash_used[MODULO];
 char *cached_value[MODULO];
 int time_to_live[MODULO];
 
+// Mutex array size
+const int MUTEX_ARRAY_SIZE = 16;
+
+// Mutex array
+mutex mtx[MUTEX_ARRAY_SIZE];
+
 // Global exit flag
 int exit_flag;
 
+// Start time
+time_t start_time;
+
+// Alloc memory and set dest = source
 static void alloc_and_copy(char **dest, const char *source) {
+	// Delete old value if necessary
 	if (*dest != NULL) {
 		free(*dest);
 	}
+	// Alloc memory
 	*dest = (char*)malloc((strlen(source) + 1) * sizeof(char));
+	// Copy to dest
 	strcpy(*dest, source);
 }
 
+// alloc memory and set dest = source1 + delimeter + source2
 static void alloc_and_concat(char **dest, const char * source1, const char * delimeter, const char *source2) {
+	// Delete old value if necessary
 	if (*dest != NULL) {
 		free(*dest);
 	}
+	// Alloc memory
 	*dest = (char*)malloc((strlen(source1) + strlen(delimeter) + strlen(source2) + 1) * sizeof(char));
+	// Copy to dest
 	int index = 0;
 	for(int i = 0; source1[i]; i++) {
 		(*dest)[index++] = source1[i];
@@ -47,6 +68,7 @@ static void alloc_and_concat(char **dest, const char * source1, const char * del
 	(*dest)[index] = 0;
 }
 
+// Initialize cached values and auxiliary data
 static void init_hashmap() {
 	for(int i = 0; i < MODULO; i++){
 		hash_used[i] = 0;
@@ -55,14 +77,36 @@ static void init_hashmap() {
 	}
 }
 
+static int get_mutexed_segment_size() {
+	return (MODULO + MUTEX_ARRAY_SIZE - 1) / MUTEX_ARRAY_SIZE;
+}
+
+// Get index in mutex array by hash index
+static int get_mutex_index(int hash) {
+	return hash / get_mutexed_segment_size();
+}
+
+// Delete all cached values
 static void clear_hashmap() {
-	for(int i = 0; i < MODULO; i++){
-		if (hash_used[i]) {
-			free(cached_value[i]);		
+	// Clear segments one by one
+	int segment_size = get_mutexed_segment_size();
+	for(int i = 0; i < MUTEX_ARRAY_SIZE; i++) {
+		int l = i * segment_size;
+		int r = min((i + 1) * segment_size, MODULO);
+
+		// Lock mutex and clesar all values in corresponding segment
+		while(!mtx[i].try_lock());
+		for(int j = l; j < r; j++) {
+			if (hash_used[j]) {
+				free(cached_value[j]);
+				cached_value[j] = NULL;		
+			}
 		}
+		mtx[i].unlock();
 	}
 }
 
+// Get hash = (str[n - 1] + str[n - 2] * P + str[n - 3] * P^2 + ... + str[0] * P^(n-1)) % MODULO
 static int get_hash(char * str) {
 	int hash = 0;
 	for(int i = 0; str[i]; i++) {
@@ -72,27 +116,62 @@ static int get_hash(char * str) {
 }
 
 static void get_value(char * key, char **value, int *result) {
-	// TODO - add time_to_live
 	int hash = get_hash(key);
+
+	// Lock corresponding mutex
+	int mutex_index = get_mutex_index(hash);
+	while(!mtx[mutex_index].try_lock());
+
+	// Check if key exists
 	if (!hash_used[hash]) {
 		*result = 0;
 		return;
 	}
+
+	// Check if time to live suits 
+	time_t current_time = time(NULL);
+	if (time_to_live[hash] < current_time) {
+		// Delete old value and return 0
+		hash_used[hash] = 0;
+		free(cached_value[hash]);
+		cached_value[hash] = NULL;
+		time_to_live[hash] = 0;
+		*result = 0;
+		return;	
+	}
+
+	// Get value
 	*result = 1;
 	alloc_and_copy(value, cached_value[hash]);
+
+	// Unlock mutex
+	mtx[mutex_index].unlock();
 }
 
 static void set_value(char * key, char *value, int ttl) {
-	// TODO - add time_to_live
-	// TODO - add mutex
 	int hash = get_hash(key);
+
+	// Lock corresponding mutex
+	int mutex_index = get_mutex_index(hash);
+	while(!mtx[mutex_index].try_lock());
+
+	// Delete old value if necessary
 	if (hash_used[hash]) {
 		free(cached_value[hash]);
+		cached_value[hash] = NULL;
 	}
+
+	// Set value
 	hash_used[hash] = 1;
 	alloc_and_copy(&cached_value[hash], value);
+	time_t current_time = time(NULL);
+	time_to_live[hash] = ((int)current_time) + ttl;
+
+	// Unlock mutex
+	mtx[mutex_index].unlock();
 }
 
+// Set error code and error description
 static void set_error(int *error_code, char **error_description, int error_code_value, const char *error_description_value) {
 	*error_code = error_code_value;
 	strcpy(*error_description, error_description_value);
@@ -213,6 +292,9 @@ static void finalize_request(char * param_type, char * param_key, char * param_v
 }
 
 static void process_request(char * request, char ** response) {
+	// Just for testing
+	std::this_thread::sleep_for(std::chrono::seconds(1));
+
 	// Set error fields
 	int error_code = 0;
 	char * error_description = (char *)malloc(4096 * sizeof(char));
@@ -265,6 +347,9 @@ int main() {
 
 	// Refresh global exit flag	
 	exit_flag = 0;
+
+	// Initialize start time
+	start_time = time(NULL);
 
 	while(1) {
 		string tmp;
