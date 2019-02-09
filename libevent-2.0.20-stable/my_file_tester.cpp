@@ -95,14 +95,18 @@ static void clear_hashmap() {
 		int r = min((i + 1) * segment_size, MODULO);
 
 		// Lock mutex and clesar all values in corresponding segment
+		//cout << "Clear hashmap - trying to lock mutex #" << i << "...\n";
 		while(!mtx[i].try_lock());
+		//cout << "Clear hashmap - mutex #" << i << " locked\n";
 		for(int j = l; j < r; j++) {
 			if (hash_used[j]) {
 				free(cached_value[j]);
 				cached_value[j] = NULL;		
 			}
 		}
+		//cout << "Clear hashmap - trying to unlock mutex #" << i << "...\n";
 		mtx[i].unlock();
+		//cout << "Clear hashmap - mutex #" << i << " unlocked\n";
 	}
 }
 
@@ -120,11 +124,19 @@ static void get_value(char * key, char **value, int *result) {
 
 	// Lock corresponding mutex
 	int mutex_index = get_mutex_index(hash);
+	//cout << "Get value - trying to lock mutex #" << mutex_index << "...\n";
 	while(!mtx[mutex_index].try_lock());
+	//cout << "Get value - mutex #" << mutex_index << " locked\n";
 
 	// Check if key exists
 	if (!hash_used[hash]) {
 		*result = 0;
+
+		// Unlock mutex
+		//cout << "Get value - trying to unlock mutex #" << mutex_index << "...\n";
+		mtx[mutex_index].unlock();
+		//cout << "Get value - mutex #" << mutex_index << " unlocked\n";
+		
 		return;
 	}
 
@@ -137,6 +149,12 @@ static void get_value(char * key, char **value, int *result) {
 		cached_value[hash] = NULL;
 		time_to_live[hash] = 0;
 		*result = 0;
+
+		// Unlock mutex
+		//cout << "Get value - trying to unlock mutex #" << mutex_index << "...\n";
+		mtx[mutex_index].unlock();
+		//cout << "Get value - mutex #" << mutex_index << " unlocked\n";		
+		
 		return;	
 	}
 
@@ -145,7 +163,9 @@ static void get_value(char * key, char **value, int *result) {
 	alloc_and_copy(value, cached_value[hash]);
 
 	// Unlock mutex
+	//cout << "Get value - trying to unlock mutex #" << mutex_index << "...\n";
 	mtx[mutex_index].unlock();
+	//cout << "Get value - mutex #" << mutex_index << " unlocked\n";
 }
 
 static void set_value(char * key, char *value, int ttl) {
@@ -153,7 +173,9 @@ static void set_value(char * key, char *value, int ttl) {
 
 	// Lock corresponding mutex
 	int mutex_index = get_mutex_index(hash);
+	//cout << "Set value - trying to lock mutex #" << mutex_index << "...\n";
 	while(!mtx[mutex_index].try_lock());
+	//cout << "Set value - mutex #" << mutex_index << " locked\n";
 
 	// Delete old value if necessary
 	if (hash_used[hash]) {
@@ -168,7 +190,9 @@ static void set_value(char * key, char *value, int ttl) {
 	time_to_live[hash] = ((int)current_time) + ttl;
 
 	// Unlock mutex
+	//cout << "Set value - trying to unlock mutex #" << mutex_index << "...\n";
 	mtx[mutex_index].unlock();
+	//cout << "Set value - mutex #" << mutex_index << " unlocked\n";
 }
 
 // Set error code and error description
@@ -271,7 +295,7 @@ static void finalize_request(char * param_type, char * param_key, char * param_v
 	if (error_code != 0) {
 		alloc_and_copy(response_header, "ERROR");
 		alloc_and_copy(response_description, error_description);	
-	} else if (exit_flag) {
+	} else if (strcmp(param_type, "EXIT") == 0) {
 		alloc_and_copy(response_header, "EXIT");
 		alloc_and_copy(response_description, "OK");
 	} else {
@@ -338,6 +362,32 @@ static void process_request(char * request, char ** response) {
 	return;
 }
 
+static void process_request_in_thread(string tmp) {
+	char * request = (char *)malloc((tmp.length() + 1) * sizeof(char));
+	for(int i = 0; i < (int)tmp.length(); i++) {
+		request[i] = tmp[i];
+	}
+	request[tmp.length()] = 0;
+
+	//printf("%s\n", request);
+
+	char * response = NULL;
+
+	process_request(request, &response);
+
+	printf("%s\n", request);
+	printf("%s\n", response);
+
+	free(request);
+	free(response);
+}
+
+static void finalize_all() {
+	std::this_thread::sleep_for(std::chrono::seconds(30));
+	clear_hashmap();
+	exit(0);
+}
+
 int main() {
 	freopen("my_input.txt", "r", stdin);
 	freopen("my_output.txt", "w", stdout);
@@ -355,22 +405,19 @@ int main() {
 		string tmp;
 		getline(cin, tmp);
 		if (tmp == "") {
-			break;		
+			finalize_all();		
 		}
-		char * request = (char *)malloc((tmp.length() + 1) * sizeof(char));
-		for(int i = 0; i < (int)tmp.length(); i++) {
-			request[i] = tmp[i];
-		}
-		request[tmp.length()] = 0;
-		char * response = NULL;
-		
-		process_request(request, &response);
-		printf("%s\n", response);
-		free(request);
-		free(response);
+
+		//process_request(request, &response);
+		//thread t(process_request, request, &response);
+		//t.detach();
+
+		//process_request_in_thread(&request);
+		thread t(process_request_in_thread, tmp);
+		t.detach();
+
 		if (exit_flag) {
-			clear_hashmap();
-			exit(0);
+			finalize_all();
 		}
 	}
 }

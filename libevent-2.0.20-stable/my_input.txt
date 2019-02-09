@@ -24,5 +24,6 @@ echo -n 'GET KEY=456 VALUE=6 TTL=4' | nc -U /tmp/mysocket
 echo -n 'PUT KEY=456' | nc -U /tmp/mysocket
 echo -n 'XXX KEY=456' | nc -U /tmp/mysocket
 echo -n 'INVALID' | nc -U /tmp/mysocket
+echo -n 'GET KEY=123456789' | nc -U /tmp/mysocket
 echo -n 'EXIT' | nc -U /tmp/mysocket
 
