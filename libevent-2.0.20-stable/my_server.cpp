@@ -417,6 +417,7 @@ static void echo_read_cb(struct bufferevent *bev, void *ctx) {
 	free(response);
 
 	if (exit_flag) {
+		bufferevent_free(bev);
 		clear_hashmap();
 		exit(0);
 	}

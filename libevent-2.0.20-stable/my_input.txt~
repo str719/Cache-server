@@ -24,5 +24,41 @@ echo -n 'GET KEY=456 VALUE=6 TTL=4' | nc -U /tmp/mysocket
 echo -n 'PUT KEY=456' | nc -U /tmp/mysocket
 echo -n 'XXX KEY=456' | nc -U /tmp/mysocket
 echo -n 'INVALID' | nc -U /tmp/mysocket
+echo -n 'GET KEY=123456789' | nc -U /tmp/mysocket
 echo -n 'EXIT' | nc -U /tmp/mysocket
 
+echo -n 'GET KEY=123456789' | nc localhost 9876
+echo -n 'PUT KEY=123456789 VALUE=459 TTL=5' | nc localhost 9876
+echo -n 'GET KEY=123456789' | nc localhost 9876
+echo -n 'GET KEY error' | nc localhost 9876
+echo -n 'GET VALUE=5' | nc localhost 9876
+echo -n 'PUT KEY=456 TTL=4 VALUE=6' | nc localhost 9876
+echo -n 'PUT KEY=456 VALUE=6 TTL=4' | nc localhost 9876
+echo -n 'GET KEY=456 VALUE=6 TTL=4' | nc localhost 9876
+echo -n 'PUT KEY=456' | nc localhost 9876
+echo -n 'XXX KEY=456' | nc localhost 9876
+echo -n 'INVALID' | nc localhost 9876
+echo -n 'GET KEY=123456789' | nc localhost 9876
+
+echo -n 'GET KEY=1' | nc localhost 9876
+echo -n 'GET KEY=2' | nc localhost 9876
+echo -n 'PUT KEY=1 VALUE=459 TTL=500' | nc localhost 9876
+echo -n 'PUT KEY=2 VALUE=1024 TTL=5' | nc localhost 9876
+echo -n 'GET KEY=1' | nc localhost 9876
+echo -n 'GET KEY=2' | nc localhost 9876
+echo -n 'GET KEY=1' | nc localhost 9876
+echo -n 'GET KEY=2' | nc localhost 9876
+echo -n 'GET KEY=1' | nc localhost 9876
+echo -n 'GET KEY=2' | nc localhost 9876
+echo -n 'GET KEY=1' | nc localhost 9876
+echo -n 'GET KEY=2' | nc localhost 9876
+echo -n 'PUT KEY=1 VALUE=559 TTL=5' | nc localhost 9876
+echo -n 'PUT KEY=2 VALUE=2024 TTL=500' | nc localhost 9876
+echo -n 'GET KEY=1' | nc localhost 9876
+echo -n 'GET KEY=2' | nc localhost 9876
+echo -n 'GET KEY=1' | nc localhost 9876
+echo -n 'GET KEY=2' | nc localhost 9876
+echo -n 'GET KEY=1' | nc localhost 9876
+echo -n 'GET KEY=2' | nc localhost 9876
+echo -n 'GET KEY=1' | nc localhost 9876
+echo -n 'GET KEY=2' | nc localhost 9876

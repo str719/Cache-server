@@ -47,13 +47,13 @@ static void alloc_and_copy(char **dest, const char *source) {
 }
 
 // alloc memory and set dest = source1 + delimeter + source2
-static void alloc_and_concat(char **dest, const char * source1, const char * delimeter, const char *source2) {
+static void alloc_and_concat(char **dest, const char * source1, const char * delimeter, const char *source2, int add_endline) {
 	// Delete old value if necessary
 	if (*dest != NULL) {
 		free(*dest);
 	}
 	// Alloc memory
-	*dest = (char*)malloc((strlen(source1) + strlen(delimeter) + strlen(source2) + 1) * sizeof(char));
+	*dest = (char*)malloc((strlen(source1) + strlen(delimeter) + strlen(source2) + add_endline + 1) * sizeof(char));
 	// Copy to dest
 	int index = 0;
 	for(int i = 0; source1[i]; i++) {
@@ -64,6 +64,9 @@ static void alloc_and_concat(char **dest, const char * source1, const char * del
 	}
 	for(int i = 0; source2[i]; i++) {
 		(*dest)[index++] = source2[i];
+	}
+	if (add_endline) {
+		(*dest)[index++] = '\n';
 	}
 	(*dest)[index] = 0;
 }
@@ -303,7 +306,7 @@ static void finalize_request(char * param_type, char * param_key, char * param_v
 		//alloc_and_copy(response_description, "OK");
 	}
 
-	alloc_and_concat(response, *response_header, "|", *response_description);
+	alloc_and_concat(response, *response_header, "|", *response_description, 1);
 
 	free(param_type);
 	free(param_key);

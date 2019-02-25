@@ -1,30 +1,45 @@
+GET KEY=123456789
+GET FAILURE|Value does not exist.
+
 PUT KEY=123456789 VALUE=54345678976550 TTL=5
 PUT SUCCESS|Value successfully saved.
+
 GET KEY=123456789
 GET SUCCESS|54345678976550
+
 PUT KEY=456 TTL=4 VALUE=6
 ERROR|Incorrect parameter names or ordering.
+
 GET VALUE=5
 ERROR|Incorrect parameter names or ordering.
+
+PUT KEY=456 VALUE=6 TTL=4
+PUT SUCCESS|Value successfully saved.
+
 GET KEY=456 VALUE=6 TTL=4
 ERROR|Extra symbols in request.
-GET KEY=123456789
-GET SUCCESS|54345678976550
-XXX KEY=456
-ERROR|Incorrect request type (must be GET, PUT or EXIT).
+
 PUT KEY=456
 ERROR|Incorrect parameter names or ordering.
-INVALID
+
+XXX KEY=456
 ERROR|Incorrect request type (must be GET, PUT or EXIT).
-NONREACHABLE COMMAND
-ERROR|Incorrect request type (must be GET, PUT or EXIT).
-GET KEY error
-ERROR|Incorrect parameter name and value delimeter.
-EXIT
-EXIT|OK
-PUT KEY=456 VALUE=6 TTL=4
-PUT SUCCESS|Value successfully saved.
+
 GET KEY=123456789
 GET SUCCESS|54345678976550
+
+INVALID
+ERROR|Incorrect request type (must be GET, PUT or EXIT).
+
+EXIT
+EXIT|OK
+
+NONREACHABLE COMMAND
+ERROR|Incorrect request type (must be GET, PUT or EXIT).
+
+GET KEY error
+ERROR|Incorrect parameter name and value delimeter.
+
 PUT KEY=456 VALUE=6 TTL=4
 PUT SUCCESS|Value successfully saved.
+

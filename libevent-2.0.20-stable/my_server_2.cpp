@@ -1,14 +1,13 @@
 #include <event2/listener.h>
 #include <event2/bufferevent.h>
 #include <event2/buffer.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/un.h>
+
+#include <arpa/inet.h>
+
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
-#define UNIX_SOCK_PATH "/tmp/mysocket"
 
 #include <mutex>
 #include <thread>
@@ -51,13 +50,13 @@ static void alloc_and_copy(char **dest, const char *source) {
 }
 
 // alloc memory and set dest = source1 + delimeter + source2
-static void alloc_and_concat(char **dest, const char * source1, const char * delimeter, const char *source2) {
+static void alloc_and_concat(char **dest, const char * source1, const char * delimeter, const char *source2, int add_endline) {
 	// Delete old value if necessary
 	if (*dest != NULL) {
 		free(*dest);
 	}
 	// Alloc memory
-	*dest = (char*)malloc((strlen(source1) + strlen(delimeter) + strlen(source2) + 1) * sizeof(char));
+	*dest = (char*)malloc((strlen(source1) + strlen(delimeter) + strlen(source2) + add_endline + 1) * sizeof(char));
 	// Copy to dest
 	int index = 0;
 	for(int i = 0; source1[i]; i++) {
@@ -68,6 +67,9 @@ static void alloc_and_concat(char **dest, const char * source1, const char * del
 	}
 	for(int i = 0; source2[i]; i++) {
 		(*dest)[index++] = source2[i];
+	}
+	if (add_endline) {
+		(*dest)[index++] = '\n';
 	}
 	(*dest)[index] = 0;
 }
@@ -307,7 +309,7 @@ static void finalize_request(char * param_type, char * param_key, char * param_v
 		//alloc_and_copy(response_description, "OK");
 	}
 
-	alloc_and_concat(response, *response_header, "|", *response_description);
+	alloc_and_concat(response, *response_header, "|", *response_description, 1);
 
 	free(param_type);
 	free(param_key);
@@ -366,36 +368,11 @@ static void process_request(char * request, char ** response) {
 	return;
 }
 
-/*static void process_request_in_thread(string tmp) {
-	char * request = (char *)malloc((tmp.length() + 1) * sizeof(char));
-	for(int i = 0; i < (int)tmp.length(); i++) {
-		request[i] = tmp[i];
-	}
-	request[tmp.length()] = 0;
-
-	//printf("%s\n", request);
-
-	char * response = NULL;
-
-	process_request(request, &response);
-
-	printf("%s\n", request);
-	printf("%s\n", response);
-
-	free(request);
-	free(response);
-}
-
-static void finalize_all() {
-	std::this_thread::sleep_for(std::chrono::seconds(30));
-	clear_hashmap();
-	exit(0);
-}*/
-
 static void echo_read_cb(struct bufferevent *bev, void *ctx) {
-	/* This callback is invoked when there is data to read on bev. */
-	struct evbuffer *input = bufferevent_get_input(bev);
+        /* This callback is invoked when there is data to read on bev. */
+        struct evbuffer *input = bufferevent_get_input(bev);
 	struct evbuffer *output = bufferevent_get_output(bev);
+
 	size_t len = evbuffer_get_length(input);
 	char *data;
 	//data = malloc(len);
@@ -406,47 +383,41 @@ static void echo_read_cb(struct bufferevent *bev, void *ctx) {
 	printf("we got some data: %s\n", data);
 
 	char *response = NULL;
-	
-	
+		
 	process_request(data, &response);
 
-	/* Copy all the data from the input buffer to the output buffer. */
-	//evbuffer_add_buffer(output, input);
 	evbuffer_add(output, response, strlen(response));
 	free(data);
-	free(response);
-
-	if (exit_flag) {
-		clear_hashmap();
-		exit(0);
-	}
+	free(response);          
 }
 
 static void echo_event_cb(struct bufferevent *bev, short events, void *ctx) {
 	if (events & BEV_EVENT_ERROR)
-		perror("Error from bufferevent");
-	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-		bufferevent_free(bev);
-	}
+                perror("Error from bufferevent");
+        if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
+                bufferevent_free(bev);
+        }
 }
 
-static void
-accept_conn_cb(struct evconnlistener *listener, evutil_socket_t fd, struct sockaddr *address, int socklen, void *ctx) {
-	/* We got a new connection! Set up a bufferevent for it. */
-	struct event_base *base = evconnlistener_get_base(listener);
-	struct bufferevent *bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
-	bufferevent_setcb(bev, echo_read_cb, NULL, echo_event_cb, NULL);
+static void accept_conn_cb(struct evconnlistener *listener,
+    evutil_socket_t fd, struct sockaddr *address, int socklen,
+    void *ctx) {
+        /* We got a new connection! Set up a bufferevent for it. */
+        struct event_base *base = evconnlistener_get_base(listener);
+        struct bufferevent *bev = bufferevent_socket_new(
+                base, fd, BEV_OPT_CLOSE_ON_FREE);
 
-	bufferevent_enable(bev, EV_READ | EV_WRITE);
+        bufferevent_setcb(bev, echo_read_cb, NULL, echo_event_cb, NULL);
+
+        bufferevent_enable(bev, EV_READ|EV_WRITE);
 }
 
 static void accept_error_cb(struct evconnlistener *listener, void *ctx) {
-	struct event_base *base = evconnlistener_get_base(listener);
-	int err = EVUTIL_SOCKET_ERROR();
-	fprintf(stderr, "Got an error %d (%s) on the listener. "
-		"Shutting down.\n", err, evutil_socket_error_to_string(err));
-
-	event_base_loopexit(base, NULL);
+        struct event_base *base = evconnlistener_get_base(listener);
+        int err = EVUTIL_SOCKET_ERROR();
+        fprintf(stderr, "Got an error %d (%s) on the listener. "
+                "Shutting down.\n", err, evutil_socket_error_to_string(err));
+        event_base_loopexit(base, NULL);
 }
 
 int main(int argc, char **argv) {
@@ -458,33 +429,47 @@ int main(int argc, char **argv) {
 	exit_flag = 0;
 	// MY CODE END
 
-	struct event_base *base;
-	struct evconnlistener *listener;
-	struct sockaddr_un sin;
-	/* Create new event base */
-	base = event_base_new();
-	if (!base) {
-		puts("Couldn't open event base");
-		return 1;
-	}
+        struct event_base *base;
+        struct evconnlistener *listener;
+        struct sockaddr_in sin;
 
-	/* Clear the sockaddr before using it, in case there are extra
-	 * platform-specific fields that can mess us up. */
-	memset(&sin, 0, sizeof(sin));
-	sin.sun_family = AF_LOCAL;
-	strcpy(sin.sun_path, UNIX_SOCK_PATH);
+        int port = 9876;
 
-	/* Create a new listener */
-	listener = evconnlistener_new_bind(base, accept_conn_cb, NULL,
-                                       LEV_OPT_CLOSE_ON_FREE | LEV_OPT_REUSEABLE, -1,
-                                       (struct sockaddr *) &sin, sizeof(sin));
-	if (!listener) {
-		perror("Couldn't create listener");
-		return 1;
-	}
-	evconnlistener_set_error_cb(listener, accept_error_cb);
+        if (argc > 1) {
+                port = atoi(argv[1]);
+        }
+        if (port<=0 || port>65535) {
+                puts("Invalid port");
+                return 1;
+        }
 
-	/* Lets rock */
-	event_base_dispatch(base);
-	return 0;
+        base = event_base_new();
+        if (!base) {
+                puts("Couldn't open event base");
+                return 1;
+        }
+
+        /* Clear the sockaddr before using it, in case there are extra
+         * platform-specific fields that can mess us up. */
+        memset(&sin, 0, sizeof(sin));
+        /* This is an INET address */
+        sin.sin_family = AF_INET;
+        /* Listen on 0.0.0.0 */
+        sin.sin_addr.s_addr = htonl(0);
+        /* Listen on the given port. */
+        sin.sin_port = htons(port);
+
+        listener = evconnlistener_new_bind(base, accept_conn_cb, NULL,
+            LEV_OPT_CLOSE_ON_FREE|LEV_OPT_REUSEABLE, -1,
+            (struct sockaddr*)&sin, sizeof(sin));
+        if (!listener) {
+                perror("Couldn't create listener");
+                return 1;
+        }
+        evconnlistener_set_error_cb(listener, accept_error_cb);
+
+        event_base_dispatch(base);
+        return 0;
 }
+
+
