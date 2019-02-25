@@ -34,6 +34,18 @@ int exit_flag;
 // Start time
 time_t start_time;
 
+// Number of additional threads
+const int ADDITIONAL_THREADS_COUNT = 3;
+
+// Additional threads
+thread additional_thread[ADDITIONAL_THREADS_COUNT];
+
+// Current additional thread index
+int current_additional_thread_index;
+
+// flags whether additional threads were already used
+int additional_thread_used[ADDITIONAL_THREADS_COUNT];
+
 // Alloc memory and set dest = source
 static void alloc_and_copy(char **dest, const char *source) {
 	// Delete old value if necessary
@@ -386,7 +398,11 @@ static void process_request_in_thread(string tmp) {
 }
 
 static void finalize_all() {
-	std::this_thread::sleep_for(std::chrono::seconds(30));
+	for(int i = 0; i < ADDITIONAL_THREADS_COUNT; i++) {
+		if (additional_thread_used[i]) {
+			additional_thread[i].join();
+		}
+	}
 	clear_hashmap();
 	exit(0);
 }
@@ -404,6 +420,14 @@ int main() {
 	// Initialize start time
 	start_time = time(NULL);
 
+	// Reset additional thread index
+	current_additional_thread_index = 0;
+
+	// Reset additional thread use flags
+	for(int i = 0; i < ADDITIONAL_THREADS_COUNT; i++) {
+		additional_thread_used[i] = 0;
+	}
+
 	while(1) {
 		string tmp;
 		getline(cin, tmp);
@@ -416,8 +440,17 @@ int main() {
 		//t.detach();
 
 		//process_request_in_thread(&request);
-		thread t(process_request_in_thread, tmp);
-		t.detach();
+		//thread t(process_request_in_thread, tmp);
+		//t.detach();
+
+		//process_request_in_thread(tmp);
+		if (additional_thread_used[current_additional_thread_index]) {
+			additional_thread[current_additional_thread_index].join();
+		} else {
+			additional_thread_used[current_additional_thread_index] = 1;
+		}
+		additional_thread[current_additional_thread_index] = thread(process_request_in_thread, tmp);
+		current_additional_thread_index = (current_additional_thread_index + 1) % ADDITIONAL_THREADS_COUNT;
 
 		if (exit_flag) {
 			finalize_all();

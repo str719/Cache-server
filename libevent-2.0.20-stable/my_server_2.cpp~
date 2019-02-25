@@ -37,6 +37,18 @@ int exit_flag;
 // Start time
 time_t start_time;
 
+// Number of additional threads
+const int ADDITIONAL_THREADS_COUNT = 3;
+
+// Additional threads
+thread additional_thread[ADDITIONAL_THREADS_COUNT];
+
+// Current additional thread index
+int current_additional_thread_index;
+
+// flags whether additional threads were already used
+int additional_thread_used[ADDITIONAL_THREADS_COUNT];
+
 // Alloc memory and set dest = source
 static void alloc_and_copy(char **dest, const char *source) {
 	// Delete old value if necessary
@@ -309,7 +321,7 @@ static void finalize_request(char * param_type, char * param_key, char * param_v
 		//alloc_and_copy(response_description, "OK");
 	}
 
-	alloc_and_concat(response, *response_header, "|", *response_description);
+	alloc_and_concat(response, *response_header, "|", *response_description, 1);
 
 	free(param_type);
 	free(param_key);
@@ -388,7 +400,7 @@ static void echo_read_cb(struct bufferevent *bev, void *ctx) {
 
 	evbuffer_add(output, response, strlen(response));
 	free(data);
-	free(response);          
+	free(response);  
 }
 
 static void echo_event_cb(struct bufferevent *bev, short events, void *ctx) {
@@ -399,17 +411,39 @@ static void echo_event_cb(struct bufferevent *bev, short events, void *ctx) {
         }
 }
 
+static void accept_conn_cb_in_thread(struct evconnlistener *listener,
+    evutil_socket_t fd, struct sockaddr *address, int socklen,
+    void *ctx) {
+	struct event_base *base = evconnlistener_get_base(listener);
+        struct bufferevent *bev = bufferevent_socket_new(
+                base, fd, BEV_OPT_CLOSE_ON_FREE /*| BEV_OPT_THREADSAFE | BEV_OPT_UNLOCK_CALLBACKS*/);
+
+        bufferevent_setcb(bev, echo_read_cb, NULL, echo_event_cb, NULL);
+
+        bufferevent_enable(bev, EV_READ|EV_WRITE);
+}
+
 static void accept_conn_cb(struct evconnlistener *listener,
     evutil_socket_t fd, struct sockaddr *address, int socklen,
     void *ctx) {
         /* We got a new connection! Set up a bufferevent for it. */
-        struct event_base *base = evconnlistener_get_base(listener);
+	//printf("We got connection!\n");
+
+        /*struct event_base *base = evconnlistener_get_base(listener);
         struct bufferevent *bev = bufferevent_socket_new(
                 base, fd, BEV_OPT_CLOSE_ON_FREE);
 
         bufferevent_setcb(bev, echo_read_cb, NULL, echo_event_cb, NULL);
 
-        bufferevent_enable(bev, EV_READ|EV_WRITE);
+        bufferevent_enable(bev, EV_READ|EV_WRITE);*/
+	
+	if (additional_thread_used[current_additional_thread_index]) {
+		additional_thread[current_additional_thread_index].join();
+	} else {
+		additional_thread_used[current_additional_thread_index] = 1;
+	}
+	additional_thread[current_additional_thread_index] = thread(accept_conn_cb_in_thread, listener, fd, address, socklen, ctx);
+	current_additional_thread_index = (current_additional_thread_index + 1) % ADDITIONAL_THREADS_COUNT;  
 }
 
 static void accept_error_cb(struct evconnlistener *listener, void *ctx) {
@@ -427,6 +461,14 @@ int main(int argc, char **argv) {
 
 	// Refresh global exit flag	
 	exit_flag = 0;
+
+	// Reset additional thread index
+	current_additional_thread_index = 0;
+
+	// Reset additional thread use flags
+	for(int i = 0; i < ADDITIONAL_THREADS_COUNT; i++) {
+		additional_thread_used[i] = 0;
+	}
 	// MY CODE END
 
         struct event_base *base;
