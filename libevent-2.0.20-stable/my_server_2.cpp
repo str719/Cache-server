@@ -380,9 +380,8 @@ static void process_request(char * request, char ** response) {
 	return;
 }
 
-static void echo_read_cb(struct bufferevent *bev, void *ctx) {
-        /* This callback is invoked when there is data to read on bev. */
-        struct evbuffer *input = bufferevent_get_input(bev);
+static void process_request_in_thread(struct bufferevent *bev, void *ctx) {
+	struct evbuffer *input = bufferevent_get_input(bev);
 	struct evbuffer *output = bufferevent_get_output(bev);
 
 	size_t len = evbuffer_get_length(input);
@@ -401,6 +400,38 @@ static void echo_read_cb(struct bufferevent *bev, void *ctx) {
 	evbuffer_add(output, response, strlen(response));
 	free(data);
 	free(response);  
+}
+
+static void echo_read_cb(struct bufferevent *bev, void *ctx) {
+        /* This callback is invoked when there is data to read on bev. */
+        
+	struct evbuffer *input = bufferevent_get_input(bev);
+	struct evbuffer *output = bufferevent_get_output(bev);
+
+	size_t len = evbuffer_get_length(input);
+	char *data;
+	//data = malloc(len);
+	data = (char*)malloc(len + 1);
+	data[len] = 0;
+	evbuffer_copyout(input, data, len);
+
+	printf("we got some data: %s\n", data);
+
+	char *response = NULL;
+		
+	process_request(data, &response);
+
+	evbuffer_add(output, response, strlen(response));
+	free(data);
+	free(response);
+
+	/*if (additional_thread_used[current_additional_thread_index]) {
+		additional_thread[current_additional_thread_index].join();
+	} else {
+		additional_thread_used[current_additional_thread_index] = 1;
+	}
+	additional_thread[current_additional_thread_index] = thread(process_request_in_thread, bev, ctx);
+	current_additional_thread_index = (current_additional_thread_index + 1) % ADDITIONAL_THREADS_COUNT;*/
 }
 
 static void echo_event_cb(struct bufferevent *bev, short events, void *ctx) {
@@ -443,7 +474,7 @@ static void accept_conn_cb(struct evconnlistener *listener,
 		additional_thread_used[current_additional_thread_index] = 1;
 	}
 	additional_thread[current_additional_thread_index] = thread(accept_conn_cb_in_thread, listener, fd, address, socklen, ctx);
-	current_additional_thread_index = (current_additional_thread_index + 1) % ADDITIONAL_THREADS_COUNT; */ 
+	current_additional_thread_index = (current_additional_thread_index + 1) % ADDITIONAL_THREADS_COUNT;  */
 }
 
 static void accept_error_cb(struct evconnlistener *listener, void *ctx) {

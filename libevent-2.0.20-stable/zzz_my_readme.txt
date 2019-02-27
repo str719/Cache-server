@@ -10,4 +10,5 @@ cd 'Cache server/libevent-2.0.20-stable'
 
 gcc -Wall my_server_2.c -levent -o server
 g++ -Wall my_server_2.cpp -levent -o server -pthread -std=c++11
+g++ -Wall my_server_3.cpp -levent -o server -pthread -std=c++11
 ./server
